@@ -323,16 +323,7 @@ tests/                 # Test suite
 6. Get 1+ approvals
 7. Merge to develop
 
----
 
-## 📞 Support & Resources
-
-- **Documentation**: https://docs.modelforge.ai
-- **Discord**: https://discord.gg/modelforge
-- **GitHub Issues**: Report bugs, request features
-- **Email**: dev@modelforge.ai
-
----
 
 ## 🎓 Learning Resources
 
