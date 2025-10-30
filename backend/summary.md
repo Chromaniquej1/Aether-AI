@@ -352,14 +352,7 @@ tests/                 # Test suite
 
 ---
 
-## 📞 Support & Resources
 
-- **Documentation**: https://docs.modelforge.ai
-- **Discord**: https://discord.gg/modelforge
-- **GitHub Issues**: Report bugs, request features
-- **Email**: dev@modelforge.ai
-
----
 
 ## 🎓 Learning Resources
 
