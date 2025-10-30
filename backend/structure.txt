@@ -1,7 +1,7 @@
-# ModelForge-CV Repository Structure
+# Aether AI-CV Repository Structure
 
 ```
-modelforge-cv/
+AetherAI/
 │
 ├── README.md                          # Main project documentation
 ├── LICENSE                            # MIT/Apache 2.0 License
