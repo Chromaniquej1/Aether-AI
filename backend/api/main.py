@@ -18,6 +18,10 @@ from backend.models.dataset import Dataset, DatasetStatus
 from backend.models.training_job import TrainingJob, JobStatus
 from backend.models.model import Model
 from backend.models.deployment import Deployment
+from fastapi import UploadFile, File
+from fastapi.responses import FileResponse
+from typing import List, Dict
+from backend.core.inference_engine import get_inference_service, inference_manager
 
 # Worker imports
 from backend.workers.celery_app import celery_app
@@ -103,13 +107,38 @@ class ModelResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class PredictionResponse(BaseModel):
+    model_id: str
+    predicted_class: str
+    confidence: float
+    predictions: Dict[str, float]
+    class Config:
+        from_attributes = True
 
+class BatchPredictionResponse(BaseModel):
+    model_id: str
+    total_images: int
+    successful: int
+    failed: int
+    results: List[Dict]
+    class Config:
+        from_attributes = True
+
+class ModelInfoResponse(BaseModel):
+    model_id: str
+    backbone: str
+    num_classes: int
+    class_names: List[str]
+    device: str
+    is_deployed: bool
+    class Config:
+        from_attributes = True
 # ============================================================================
 # FastAPI Application
 # ============================================================================
 
 app = FastAPI(
-    title="ModelForge-CV API",
+    title="Aether AI API",
     description="End-to-End AutoML Platform for Computer Vision",
     version="2.0.0"
 )
@@ -178,11 +207,14 @@ manager = ConnectionManager()
 async def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     """Create a new project"""
     
+    # Define the demo user email (use one consistent email)
+    DEMO_EMAIL = "jayantbiradar619@gmail.com"
+    
     # Get or create demo user
-    default_user = db.query(User).filter(User.email == "demo@modelforge.ai").first()
+    default_user = db.query(User).filter(User.email == DEMO_EMAIL).first()
     if not default_user:
         default_user = User(
-            email="jayantbiradar619@gmail.com",
+            email=DEMO_EMAIL,
             username="demo",
             hashed_password="dummy_hash",
             is_active=True
@@ -490,8 +522,280 @@ async def get_model(model_id: str, db: Session = Depends(get_db)):
         is_deployed=model.is_deployed,
         created_at=model.created_at
     )
+# ============================================================================
+# INFERENCE ENDPOINTS 
+# ============================================================================
+
+@app.post("/api/models/{model_id}/predict", response_model=PredictionResponse)
+async def predict_image(
+    model_id: str,
+    image: UploadFile = File(...),
+    top_k: int = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Run inference on a single image
+    
+    Args:
+        model_id: ID of the trained model
+        image: Image file to classify
+        top_k: Return top K predictions (optional)
+    
+    Returns:
+        Predictions with class probabilities
+    """
+    # Get model from database
+    model = db.query(Model).filter(Model.id == model_id).first()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    if not model.model_path or not os.path.exists(model.model_path):
+        raise HTTPException(status_code=400, detail="Model file not found")
+    
+    try:
+        # Read image
+        image_bytes = await image.read()
+        
+        # Get inference service (cached if already loaded)
+        service = get_inference_service(model_id, model.model_path)
+        
+        # Run prediction
+        result = service.predict(image_bytes, top_k=top_k)
+        
+        return PredictionResponse(
+            model_id=model_id,
+            predicted_class=result['predicted_class'],
+            confidence=result['confidence'],
+            predictions=result['predictions']
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
+@app.post("/api/models/{model_id}/predict-batch", response_model=BatchPredictionResponse)
+async def predict_batch(
+    model_id: str,
+    images: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Run inference on multiple images
+    
+    Args:
+        model_id: ID of the trained model
+        images: List of image files to classify
+    
+    Returns:
+        Batch predictions for all images
+    """
+    model = db.query(Model).filter(Model.id == model_id).first()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    if not model.model_path or not os.path.exists(model.model_path):
+        raise HTTPException(status_code=400, detail="Model file not found")
+    
+    try:
+        # Get inference service
+        service = get_inference_service(model_id, model.model_path)
+        
+        # Process all images
+        results = []
+        successful = 0
+        failed = 0
+        
+        for img_file in images:
+            try:
+                image_bytes = await img_file.read()
+                prediction = service.predict(image_bytes)
+                
+                results.append({
+                    "filename": img_file.filename,
+                    "success": True,
+                    "predicted_class": prediction['predicted_class'],
+                    "confidence": prediction['confidence'],
+                    "predictions": prediction['predictions']
+                })
+                successful += 1
+                
+            except Exception as e:
+                results.append({
+                    "filename": img_file.filename,
+                    "success": False,
+                    "error": str(e)
+                })
+                failed += 1
+        
+        return BatchPredictionResponse(
+            model_id=model_id,
+            total_images=len(images),
+            successful=successful,
+            failed=failed,
+            results=results
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Batch prediction failed: {str(e)}")
+
+
+@app.get("/api/models/{model_id}/info", response_model=ModelInfoResponse)
+async def get_model_info(model_id: str, db: Session = Depends(get_db)):
+    """
+    Get detailed model information including inference service status
+    
+    Args:
+        model_id: ID of the model
+    
+    Returns:
+        Model metadata and inference configuration
+    """
+    model = db.query(Model).filter(Model.id == model_id).first()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    try:
+        # Get inference service info if model is loaded
+        service = get_inference_service(model_id, model.model_path)
+        info = service.get_model_info()
+        
+        return ModelInfoResponse(
+            model_id=model_id,
+            backbone=info['backbone'],
+            num_classes=info['num_classes'],
+            class_names=info['class_names'],
+            device=info['device'],
+            is_deployed=model.is_deployed
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get model info: {str(e)}")
+
+
+@app.get("/api/models/{model_id}/download")
+async def download_model(model_id: str, db: Session = Depends(get_db)):
+    """
+    Download trained model checkpoint file
+    
+    Args:
+        model_id: ID of the model
+    
+    Returns:
+        Model checkpoint (.pt file)
+    """
+    model = db.query(Model).filter(Model.id == model_id).first()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    if not model.model_path or not os.path.exists(model.model_path):
+        raise HTTPException(status_code=400, detail="Model file not found")
+    
+    return FileResponse(
+        path=model.model_path,
+        filename=f"{model.name}_{model.backbone}.pt",
+        media_type="application/octet-stream"
+    )
+
+
+@app.post("/api/models/{model_id}/deploy")
+async def deploy_model(model_id: str, db: Session = Depends(get_db)):
+    """
+    Deploy model (mark as production-ready)
+    
+    Only one model per project can be deployed at a time.
+    This also preloads the model into inference cache.
+    
+    Args:
+        model_id: ID of the model to deploy
+    
+    Returns:
+        Deployment status
+    """
+    model = db.query(Model).filter(Model.id == model_id).first()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    if not model.model_path or not os.path.exists(model.model_path):
+        raise HTTPException(status_code=400, detail="Model file not found")
+    
+    try:
+        # Unset any existing deployed models for this project
+        db.query(Model).filter(
+            Model.project_id == model.project_id,
+            Model.is_deployed == True
+        ).update({"is_deployed": False})
+        
+        # Deploy this model
+        model.is_deployed = True
+        db.commit()
+        
+        # Preload model into inference cache
+        service = get_inference_service(model_id, model.model_path)
+        info = service.get_model_info()
+        
+        return {
+            "status": "deployed",
+            "model_id": model_id,
+            "model_name": model.name,
+            "backbone": info['backbone'],
+            "num_classes": info['num_classes'],
+            "device": info['device'],
+            "message": f"Model {model.name} is now deployed and ready for production use"
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
+
+
+@app.post("/api/models/{model_id}/undeploy")
+async def undeploy_model(model_id: str, db: Session = Depends(get_db)):
+    """
+    Undeploy model and optionally remove from cache
+    
+    Args:
+        model_id: ID of the model to undeploy
+    
+    Returns:
+        Deployment status
+    """
+    model = db.query(Model).filter(Model.id == model_id).first()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    model.is_deployed = False
+    db.commit()
+    
+    return {
+        "status": "undeployed",
+        "model_id": model_id,
+        "message": f"Model {model.name} has been undeployed"
+    }
+
+
+@app.get("/api/inference/cache")
+async def get_cache_info():
+    """
+    Get inference service cache information
+    
+    Returns:
+        Cache statistics and loaded models
+    """
+    return inference_manager.get_cache_info()
+
+
+@app.post("/api/inference/cache/clear")
+async def clear_cache():
+    """
+    Clear inference service cache (unload all models from memory)
+    
+    Returns:
+        Status message
+    """
+    inference_manager.clear_cache()
+    return {
+        "status": "success",
+        "message": "Inference cache cleared successfully"
+    }
 # ============================================================================
 # WebSocket for Real-time Updates
 # ============================================================================

@@ -10,6 +10,8 @@ from backend.models.model import Model
 from backend.core.pipeline import ModelForgePipeline
 import traceback
 from datetime import datetime, timedelta
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 
 class TrainingTask(Task):

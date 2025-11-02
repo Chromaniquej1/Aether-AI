@@ -17,10 +17,11 @@ celery_app = Celery(
     broker=CELERY_BROKER_URL,
     backend=CELERY_RESULT_BACKEND,
     include=[
-        "backend.workers.training_worker",
-        "backend.workers.preprocessing_worker",
-        "backend.workers.deployment_worker",
-    ]
+    "backend.workers.training_worker",
+    "backend.workers.preprocessing_worker",
+    "backend.workers.deployment_worker",
+    "backend.workers.inference_worker",  # ← ADD THIS
+]
 )
 
 # Celery configuration
@@ -71,6 +72,7 @@ celery_app.conf.task_routes = {
     'backend.workers.training_worker.*': {'queue': 'training'},
     'backend.workers.preprocessing_worker.*': {'queue': 'preprocessing'},
     'backend.workers.deployment_worker.*': {'queue': 'deployment'},
+    'backend.workers.inference_worker.*': {'queue': 'inference'},  
 }
 
 # Logging

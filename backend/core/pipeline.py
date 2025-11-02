@@ -7,9 +7,17 @@ import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 from torchvision import transforms
 from PIL import Image
+import platform 
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import json
+from backend.core.model_manager import ModelManager, ModelConfig, ModelBackbone, FineTuningMode
+from backend.core.training_engine import TrainingEngine, TrainingConfig
+from backend.core.dataset_processor import ImageDatasetProcessor
+
+
+# Use 0 workers on macOS to avoid multiprocessing issues
+num_workers = 0 if platform.system() == 'Darwin' else 4
 
 
 class ImageClassificationDataset(Dataset):
@@ -105,7 +113,7 @@ def prepare_dataloaders(
     batch_size: int = 32,
     val_split: float = 0.2,
     target_size: int = 224,
-    num_workers: int = 4,
+    num_workers: int = 0,
     augment: bool = True
 ) -> Tuple[DataLoader, DataLoader, Dict]:
     """
@@ -246,7 +254,7 @@ class ModelForgePipeline:
         Returns:
             Dataset metadata dict
         """
-        from dataset_processor import ImageDatasetProcessor
+        
         
         print("\n" + "="*60)
         print("STEP 1: Dataset Processing")
@@ -296,7 +304,7 @@ class ModelForgePipeline:
         Returns:
             Configured PyTorch model
         """
-        from model_manager import ModelManager, ModelConfig, ModelBackbone, FineTuningMode
+        
         
         print("\n" + "="*60)
         print("STEP 2: Model Creation")
@@ -342,7 +350,7 @@ class ModelForgePipeline:
         Returns:
             Training summary dict
         """
-        from training_engine import TrainingEngine, TrainingConfig
+        
         
         print("\n" + "="*60)
         print("STEP 3: Model Training")

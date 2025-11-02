@@ -8,8 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from backend.database.base import init_db, drop_db, engine
-from backend.models import user, project, dataset, training_job, model, deployment
+from database.base import init_db, drop_db, engine
+#from backend.models import user, project, dataset, training_job, model, deployment
 from sqlalchemy.orm import sessionmaker
 
 

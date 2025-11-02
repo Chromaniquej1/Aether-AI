@@ -34,7 +34,7 @@ class TrainingConfig:
     # Training settings
     epochs: int = 50
     batch_size: int = 32
-    num_workers: int = 4
+    num_workers: int = 0
     
     # Mixed precision
     use_amp: bool = True  # Automatic Mixed Precision

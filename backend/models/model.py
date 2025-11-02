@@ -53,7 +53,7 @@ class Model(Base):
     dataset_size = Column(Integer, nullable=True)
     
     # Metadata
-    metadata = Column(JSON, nullable=True)
+    model_metadata = Column(JSON, nullable=True)
     tags = Column(JSON, nullable=True)
     
     # Status

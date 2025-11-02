@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 import os
 from typing import Generator
+#from models import user, project, dataset, training_job, model, deployment
 
 # Get database URL from environment
 DATABASE_URL = os.getenv(
@@ -53,7 +54,7 @@ def get_db() -> Generator:
 def init_db():
     """Initialize database by creating all tables"""
     # Import all models to ensure they're registered
-    from backend.models import user, project, dataset, training_job, model, deployment
+    
     
     Base.metadata.create_all(bind=engine)
     print("✅ Database tables created successfully")
